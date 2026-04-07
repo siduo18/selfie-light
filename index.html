@@ -24,7 +24,8 @@ html, body {
   height: 60px;
   background: #fff;
   z-index: 10;
-  transition: height 0.15s, opacity 0.15s;
+  transition: height 0.15s;
+  box-shadow: 0 0 80px 40px rgba(255,255,255,0.5);
 }
 
 #camera-view {
@@ -153,6 +154,10 @@ html, body {
     <label>宽度</label>
     <input type="range" id="bar-height" min="20" max="300" value="60">
   </div>
+  <div class="slider-row">
+    <label>焦距</label>
+    <input type="range" id="zoom" min="10" max="40" value="10">
+  </div>
   <div id="color-picker-wrap">
     <label>色温</label>
     <div class="color-options">
@@ -201,6 +206,8 @@ let lightOn = true;
 let lightColor = '#ffffff';
 let facingMode = 'user';
 let currentStream = null;
+let currentTrack = null;
+const zoomSlider = document.getElementById('zoom');
 
 async function initCamera() {
   try {
@@ -213,32 +220,66 @@ async function initCamera() {
     });
     video.srcObject = stream;
     currentStream = stream;
+    currentTrack = stream.getVideoTracks()[0];
     noCamera.style.display = 'none';
     video.style.display = 'block';
-    // Mirror only front camera
     video.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'none';
+    // Try native zoom
+    try {
+      const caps = currentTrack.getCapabilities();
+      if (caps.zoom) {
+        zoomSlider.min = caps.zoom.min * 10;
+        zoomSlider.max = caps.zoom.max * 10;
+        zoomSlider.value = caps.zoom.min * 10;
+      }
+    } catch(e) {}
+    updateZoom();
   } catch (e) {
     noCamera.style.display = 'flex';
     video.style.display = 'none';
   }
 }
 
+function updateZoom() {
+  const zoomVal = zoomSlider.value / 10;
+  let usedNative = false;
+  if (currentTrack) {
+    try {
+      const caps = currentTrack.getCapabilities();
+      if (caps.zoom) {
+        const clamped = Math.min(Math.max(zoomVal, caps.zoom.min), caps.zoom.max);
+        currentTrack.applyConstraints({ advanced: [{ zoom: clamped }] });
+        usedNative = true;
+      }
+    } catch(e) {}
+  }
+  // Fallback: CSS scale zoom
+  if (!usedNative) {
+    video.style.transform = (facingMode === 'user' ? 'scaleX(-1) ' : '') + 'scale(' + zoomVal + ')';
+  }
+}
+
 function updateLight() {
   if (!lightOn) {
     lightBar.style.opacity = '0';
+    lightBar.style.boxShadow = 'none';
     document.getElementById('toggle-btn').classList.add('off');
     return;
   }
   document.getElementById('toggle-btn').classList.remove('off');
   const brightness = brightnessSlider.value / 100;
   const height = heightSlider.value;
-  lightBar.style.opacity = brightness;
+  lightBar.style.opacity = '1';
   lightBar.style.height = height + 'px';
   lightBar.style.background = lightColor;
+  lightBar.style.filter = 'brightness(' + (1 + brightness * 2) + ')';
+  const spread = Math.round(brightness * 60);
+  lightBar.style.boxShadow = '0 0 ' + (spread + 40) + 'px ' + spread + 'px ' + lightColor;
 }
 
 brightnessSlider.addEventListener('input', updateLight);
 heightSlider.addEventListener('input', updateLight);
+zoomSlider.addEventListener('input', updateZoom);
 
 document.getElementById('toggle-btn').addEventListener('click', () => {
   lightOn = !lightOn;
