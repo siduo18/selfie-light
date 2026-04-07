@@ -43,6 +43,11 @@ html, body {
   background: rgba(255,255,255,0.6);
 }
 
+#light-beam {
+  position: fixed; left: 0; right: 0;
+  pointer-events: none; z-index: 15;
+}
+
 #camera-wrap {
   position: fixed; left: 0; right: 0; bottom: 0;
   overflow: hidden;
@@ -158,6 +163,7 @@ html, body {
   <div id="light-layer2"></div>
   <div id="light-layer3"></div>
 </div>
+<div id="light-beam"></div>
 <div id="divider"><div id="divider-line"></div></div>
 <div id="camera-wrap">
   <video id="camera-view" autoplay playsinline muted></video>
@@ -226,6 +232,7 @@ const zoomSlider = document.getElementById('zoom');
 const layer1 = document.getElementById('light-layer1');
 const layer2 = document.getElementById('light-layer2');
 const layer3 = document.getElementById('light-layer3');
+const lightBeam = document.getElementById('light-beam');
 
 let lightOn = true;
 let lightColor = '#ffffff';
@@ -244,6 +251,11 @@ function updateLayout() {
   divider.style.top = (splitY - 14) + 'px';
   cameraWrap.style.top = splitY + 'px';
   cameraWrap.style.height = (h - splitY) + 'px';
+  // Position beam below light bar, covering camera area
+  const beamH = Math.round((h - splitY) * 0.6);
+  lightBeam.style.top = splitY + 'px';
+  lightBeam.style.height = beamH + 'px';
+  updateLight();
 }
 
 // Draggable divider - touch
@@ -328,6 +340,7 @@ function updateLight() {
     layer2.style.opacity = '0';
     layer3.style.opacity = '0';
     lightBar.style.boxShadow = 'none';
+    lightBeam.style.opacity = '0';
     document.getElementById('toggle-btn').classList.add('off');
     return;
   }
@@ -344,6 +357,9 @@ function updateLight() {
   // Glow spread
   const spread = Math.round(b * 80);
   lightBar.style.boxShadow = '0 0 ' + (spread + 60) + 'px ' + (spread + 20) + 'px ' + lightColor;
+  // Flashlight beam shining down onto face
+  lightBeam.style.opacity = b * 0.7;
+  lightBeam.style.background = 'radial-gradient(ellipse 80% 100% at 50% 0%, ' + lightColor + ' 0%, transparent 70%)';
 }
 
 brightnessSlider.addEventListener('input', updateLight);
