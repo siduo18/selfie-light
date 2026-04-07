@@ -29,10 +29,11 @@ html, body {
 }
 
 #camera-view {
-  position: fixed; top: 0; left: 0;
+  position: fixed; top: 50%; left: 50%;
   width: 100%; height: 100%;
-  object-fit: cover;
-  transform: scaleX(-1);
+  object-fit: contain;
+  transform: translate(-50%,-50%) scaleX(-1);
+  transform-origin: center center;
 }
 
 #controls {
@@ -254,7 +255,11 @@ function updateZoom() {
   }
   // Fallback: CSS scale zoom
   if (!usedNative) {
-    video.style.transform = (facingMode === 'user' ? 'scaleX(-1) ' : '') + 'scale(' + zoomVal + ')';
+    const mirror = facingMode === 'user' ? ' scaleX(-1)' : '';
+    video.style.transform = 'translate(-50%,-50%) scale(' + zoomVal + ')' + mirror;
+  } else {
+    const mirror = facingMode === 'user' ? ' scaleX(-1)' : '';
+    video.style.transform = 'translate(-50%,-50%)' + mirror;
   }
 }
 
