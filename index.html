@@ -15,33 +15,49 @@
 html, body {
   width: 100%; height: 100%; overflow: hidden;
   background: #000; font-family: -apple-system, sans-serif;
-  touch-action: manipulation;
+  touch-action: none;
   -webkit-user-select: none; user-select: none;
 }
 
 #light-bar {
   position: fixed; top: 0; left: 0; right: 0;
-  height: 60px;
-  background: #fff;
+  height: 30%;
   z-index: 10;
-  transition: height 0.15s;
-  box-shadow: 0 0 80px 40px rgba(255,255,255,0.5);
+  pointer-events: none;
+}
+#light-layer1, #light-layer2, #light-layer3 {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+}
+#light-layer1 { background: #fff; }
+#light-layer2 { background: #fff; mix-blend-mode: screen; }
+#light-layer3 { background: #fff; mix-blend-mode: screen; }
+
+#divider {
+  position: fixed; left: 0; right: 0;
+  height: 28px; z-index: 30;
+  display: flex; align-items: center; justify-content: center;
+  cursor: ns-resize; touch-action: none;
+}
+#divider-line {
+  width: 48px; height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.6);
 }
 
+#camera-wrap {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  overflow: hidden;
+}
 #camera-view {
-  position: fixed; top: 50%; left: 50%;
   width: 100%; height: 100%;
-  object-fit: contain;
-  transform: translate(-50%,-50%) scaleX(-1);
-  transform-origin: center center;
+  object-fit: cover;
 }
 
 #controls {
   position: fixed; bottom: 0; left: 0; right: 0;
-  background: linear-gradient(transparent, rgba(0,0,0,0.8) 20%);
-  padding: 30px 20px calc(env(safe-area-inset-bottom, 12px) + 12px);
+  background: linear-gradient(transparent, rgba(0,0,0,0.85) 25%);
+  padding: 28px 20px calc(env(safe-area-inset-bottom, 12px) + 12px);
   z-index: 20;
-  display: flex; flex-direction: column; gap: 14px;
+  display: flex; flex-direction: column; gap: 12px;
 }
 
 .slider-row {
@@ -75,7 +91,7 @@ html, body {
 
 #btn-row {
   display: flex; justify-content: center; align-items: center; gap: 36px;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .btn {
@@ -89,14 +105,14 @@ html, body {
 .btn.off svg { fill: rgba(255,255,255,0.4); }
 
 #capture-btn {
-  width: 76px; height: 76px; border-radius: 50%;
+  width: 72px; height: 72px; border-radius: 50%;
   border: 4px solid #fff; background: transparent;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   transition: transform 0.1s;
 }
 #capture-btn:active { transform: scale(0.92); }
 #capture-btn .inner {
-  width: 60px; height: 60px; border-radius: 50%;
+  width: 56px; height: 56px; border-radius: 50%;
   background: #fff; transition: background 0.1s;
 }
 
@@ -137,8 +153,15 @@ html, body {
 </head>
 <body>
 
-<div id="light-bar"></div>
-<video id="camera-view" autoplay playsinline muted></video>
+<div id="light-bar">
+  <div id="light-layer1"></div>
+  <div id="light-layer2"></div>
+  <div id="light-layer3"></div>
+</div>
+<div id="divider"><div id="divider-line"></div></div>
+<div id="camera-wrap">
+  <video id="camera-view" autoplay playsinline muted></video>
+</div>
 
 <div id="no-camera">
   <svg viewBox="0 0 24 24"><path d="M18 10.48V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4.48l4 3.98v-11l-4 3.98zm-2-.79V18H4V6h12v3.69z"/></svg>
@@ -149,11 +172,7 @@ html, body {
 <div id="controls">
   <div class="slider-row">
     <label>亮度</label>
-    <input type="range" id="brightness" min="0" max="100" value="80">
-  </div>
-  <div class="slider-row">
-    <label>宽度</label>
-    <input type="range" id="bar-height" min="20" max="300" value="60">
+    <input type="range" id="brightness" min="0" max="100" value="90">
   </div>
   <div class="slider-row">
     <label>焦距</label>
@@ -195,20 +214,62 @@ html, body {
 <script>
 const video = document.getElementById('camera-view');
 const lightBar = document.getElementById('light-bar');
+const divider = document.getElementById('divider');
+const cameraWrap = document.getElementById('camera-wrap');
 const brightnessSlider = document.getElementById('brightness');
-const heightSlider = document.getElementById('bar-height');
 const flashOverlay = document.getElementById('flash-overlay');
 const previewOverlay = document.getElementById('preview-overlay');
 const previewImg = document.getElementById('preview-img');
 const canvas = document.getElementById('capture-canvas');
 const noCamera = document.getElementById('no-camera');
+const zoomSlider = document.getElementById('zoom');
+const layer1 = document.getElementById('light-layer1');
+const layer2 = document.getElementById('light-layer2');
+const layer3 = document.getElementById('light-layer3');
 
 let lightOn = true;
 let lightColor = '#ffffff';
 let facingMode = 'user';
 let currentStream = null;
 let currentTrack = null;
-const zoomSlider = document.getElementById('zoom');
+let splitY = Math.round(window.innerHeight * 0.3); // 30% for light
+
+function updateLayout() {
+  const h = window.innerHeight;
+  const minY = 40;
+  const maxY = Math.round(h * 0.6);
+  if (splitY < minY) splitY = minY;
+  if (splitY > maxY) splitY = maxY;
+  lightBar.style.height = splitY + 'px';
+  divider.style.top = (splitY - 14) + 'px';
+  cameraWrap.style.top = splitY + 'px';
+  cameraWrap.style.height = (h - splitY) + 'px';
+}
+
+// Draggable divider - touch
+let dragging = false;
+divider.addEventListener('touchstart', (e) => {
+  dragging = true;
+  e.preventDefault();
+}, { passive: false });
+document.addEventListener('touchmove', (e) => {
+  if (!dragging) return;
+  splitY = Math.round(e.touches[0].clientY);
+  updateLayout();
+}, { passive: false });
+document.addEventListener('touchend', () => { dragging = false; });
+
+// Draggable divider - mouse
+divider.addEventListener('mousedown', (e) => {
+  dragging = true;
+  e.preventDefault();
+});
+document.addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  splitY = Math.round(e.clientY);
+  updateLayout();
+});
+document.addEventListener('mouseup', () => { dragging = false; });
 
 async function initCamera() {
   try {
@@ -224,7 +285,7 @@ async function initCamera() {
     currentTrack = stream.getVideoTracks()[0];
     noCamera.style.display = 'none';
     video.style.display = 'block';
-    // Try native zoom - update slider range
+    // Try native zoom
     try {
       const caps = currentTrack.getCapabilities();
       if (caps.zoom) {
@@ -253,36 +314,39 @@ function updateZoom() {
       }
     } catch(e) {}
   }
-  // Fallback: CSS scale zoom
+  const mirror = facingMode === 'user' ? ' scaleX(-1)' : '';
   if (!usedNative) {
-    const mirror = facingMode === 'user' ? ' scaleX(-1)' : '';
-    video.style.transform = 'translate(-50%,-50%) scale(' + zoomVal + ')' + mirror;
+    video.style.transform = 'scale(' + zoomVal + ')' + mirror;
   } else {
-    const mirror = facingMode === 'user' ? ' scaleX(-1)' : '';
-    video.style.transform = 'translate(-50%,-50%)' + mirror;
+    video.style.transform = mirror || 'none';
   }
 }
 
 function updateLight() {
   if (!lightOn) {
-    lightBar.style.opacity = '0';
+    layer1.style.opacity = '0';
+    layer2.style.opacity = '0';
+    layer3.style.opacity = '0';
     lightBar.style.boxShadow = 'none';
     document.getElementById('toggle-btn').classList.add('off');
     return;
   }
   document.getElementById('toggle-btn').classList.remove('off');
-  const brightness = brightnessSlider.value / 100;
-  const height = heightSlider.value;
-  lightBar.style.opacity = '1';
-  lightBar.style.height = height + 'px';
-  lightBar.style.background = lightColor;
-  lightBar.style.filter = 'brightness(' + (1 + brightness * 2) + ')';
-  const spread = Math.round(brightness * 60);
-  lightBar.style.boxShadow = '0 0 ' + (spread + 40) + 'px ' + spread + 'px ' + lightColor;
+  const b = brightnessSlider.value / 100;
+  // Layer 1: base white
+  layer1.style.background = lightColor;
+  layer1.style.opacity = '1';
+  // Layer 2+3: extra brightness boost via stacking
+  layer2.style.background = lightColor;
+  layer2.style.opacity = b;
+  layer3.style.background = lightColor;
+  layer3.style.opacity = b > 0.5 ? (b - 0.5) * 2 : 0;
+  // Glow spread
+  const spread = Math.round(b * 80);
+  lightBar.style.boxShadow = '0 0 ' + (spread + 60) + 'px ' + (spread + 20) + 'px ' + lightColor;
 }
 
 brightnessSlider.addEventListener('input', updateLight);
-heightSlider.addEventListener('input', updateLight);
 zoomSlider.addEventListener('input', updateZoom);
 
 document.getElementById('toggle-btn').addEventListener('click', () => {
@@ -342,8 +406,10 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
 }
 
+updateLayout();
 updateLight();
 initCamera();
+window.addEventListener('resize', updateLayout);
 </script>
 </body>
 </html>
