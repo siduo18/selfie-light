@@ -223,8 +223,7 @@ async function initCamera() {
     currentTrack = stream.getVideoTracks()[0];
     noCamera.style.display = 'none';
     video.style.display = 'block';
-    video.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'none';
-    // Try native zoom
+    // Try native zoom - update slider range
     try {
       const caps = currentTrack.getCapabilities();
       if (caps.zoom) {
