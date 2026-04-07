@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="补光">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>自拍补光</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #000; font-family: -apple-system, sans-serif;
+  touch-action: manipulation;
+  -webkit-user-select: none; user-select: none;
+}
+
+#light-bar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 60px;
+  background: #fff;
+  z-index: 10;
+  transition: height 0.15s, opacity 0.15s;
+}
+
+#camera-view {
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+#controls {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,0.8) 20%);
+  padding: 30px 20px calc(env(safe-area-inset-bottom, 12px) + 12px);
+  z-index: 20;
+  display: flex; flex-direction: column; gap: 14px;
+}
+
+.slider-row {
+  display: flex; align-items: center; gap: 10px;
+  color: #fff; font-size: 14px;
+}
+.slider-row label { width: 50px; text-align: right; flex-shrink: 0; }
+.slider-row input[type=range] {
+  flex: 1; height: 4px; -webkit-appearance: none; appearance: none;
+  background: rgba(255,255,255,0.3); border-radius: 2px; outline: none;
+}
+.slider-row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #fff; border: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+#color-picker-wrap {
+  display: flex; align-items: center; gap: 10px;
+  color: #fff; font-size: 14px;
+}
+#color-picker-wrap label { width: 50px; text-align: right; flex-shrink: 0; }
+.color-options { display: flex; gap: 10px; }
+.color-dot {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.2);
+  cursor: pointer; transition: border-color 0.2s, transform 0.15s;
+}
+.color-dot.active { border-color: #fff; transform: scale(1.15); }
+
+#btn-row {
+  display: flex; justify-content: center; align-items: center; gap: 36px;
+  margin-top: 6px;
+}
+
+.btn {
+  width: 52px; height: 52px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.1); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.btn:active { background: rgba(255,255,255,0.3); }
+.btn svg { fill: #fff; width: 24px; height: 24px; }
+.btn.off svg { fill: rgba(255,255,255,0.4); }
+
+#capture-btn {
+  width: 76px; height: 76px; border-radius: 50%;
+  border: 4px solid #fff; background: transparent;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: transform 0.1s;
+}
+#capture-btn:active { transform: scale(0.92); }
+#capture-btn .inner {
+  width: 60px; height: 60px; border-radius: 50%;
+  background: #fff; transition: background 0.1s;
+}
+
+#flash-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: #fff; z-index: 100; opacity: 0; pointer-events: none;
+  transition: opacity 0.08s;
+}
+
+#preview-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.92); z-index: 200;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+}
+#preview-overlay img {
+  max-width: 92%; max-height: 68%; border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+#preview-actions {
+  margin-top: 24px; display: flex; gap: 16px;
+}
+#preview-actions button {
+  padding: 12px 36px; border-radius: 24px; border: none;
+  font-size: 16px; cursor: pointer; font-weight: 500;
+  transition: transform 0.1s;
+}
+#preview-actions button:active { transform: scale(0.95); }
+#btn-save { background: #fff; color: #000; }
+#btn-retake { background: rgba(255,255,255,0.15); color: #fff; }
+
+#no-camera {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  color: #aaa; font-size: 16px; z-index: 5; gap: 16px;
+}
+#no-camera svg { width: 64px; height: 64px; fill: #555; }
+</style>
+</head>
+<body>
+
+<div id="light-bar"></div>
+<video id="camera-view" autoplay playsinline muted></video>
+
+<div id="no-camera">
+  <svg viewBox="0 0 24 24"><path d="M18 10.48V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4.48l4 3.98v-11l-4 3.98zm-2-.79V18H4V6h12v3.69z"/></svg>
+  <div>请授权摄像头权限</div>
+  <button onclick="initCamera()" style="padding:10px 24px;border-radius:20px;border:1px solid #666;background:transparent;color:#fff;font-size:14px;cursor:pointer">重试</button>
+</div>
+
+<div id="controls">
+  <div class="slider-row">
+    <label>亮度</label>
+    <input type="range" id="brightness" min="0" max="100" value="80">
+  </div>
+  <div class="slider-row">
+    <label>宽度</label>
+    <input type="range" id="bar-height" min="20" max="300" value="60">
+  </div>
+  <div id="color-picker-wrap">
+    <label>色温</label>
+    <div class="color-options">
+      <div class="color-dot active" data-color="#ffffff" style="background:#ffffff" title="白光"></div>
+      <div class="color-dot" data-color="#fff5e0" style="background:#fff5e0" title="暖白"></div>
+      <div class="color-dot" data-color="#ffd28a" style="background:#ffd28a" title="暖黄"></div>
+      <div class="color-dot" data-color="#e0f0ff" style="background:#e0f0ff" title="冷白"></div>
+      <div class="color-dot" data-color="#ffccdd" style="background:#ffccdd" title="粉光"></div>
+    </div>
+  </div>
+  <div id="btn-row">
+    <button class="btn" id="toggle-btn" title="开关灯">
+      <svg viewBox="0 0 24 24"><path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z"/></svg>
+    </button>
+    <button id="capture-btn" title="拍照"><div class="inner"></div></button>
+    <button class="btn" id="switch-btn" title="切换摄像头">
+      <svg viewBox="0 0 24 24"><path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/><path d="M12 10l-2 2h1.5v2h1v-2H14z"/></svg>
+    </button>
+  </div>
+</div>
+
+<div id="flash-overlay"></div>
+
+<div id="preview-overlay">
+  <img id="preview-img" src="">
+  <div id="preview-actions">
+    <button id="btn-retake">重拍</button>
+    <button id="btn-save">保存</button>
+  </div>
+</div>
+
+<canvas id="capture-canvas" style="display:none"></canvas>
+
+<script>
+const video = document.getElementById('camera-view');
+const lightBar = document.getElementById('light-bar');
+const brightnessSlider = document.getElementById('brightness');
+const heightSlider = document.getElementById('bar-height');
+const flashOverlay = document.getElementById('flash-overlay');
+const previewOverlay = document.getElementById('preview-overlay');
+const previewImg = document.getElementById('preview-img');
+const canvas = document.getElementById('capture-canvas');
+const noCamera = document.getElementById('no-camera');
+
+let lightOn = true;
+let lightColor = '#ffffff';
+let facingMode = 'user';
+let currentStream = null;
+
+async function initCamera() {
+  try {
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode, width: { ideal: 1080 }, height: { ideal: 1920 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    currentStream = stream;
+    noCamera.style.display = 'none';
+    video.style.display = 'block';
+    // Mirror only front camera
+    video.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'none';
+  } catch (e) {
+    noCamera.style.display = 'flex';
+    video.style.display = 'none';
+  }
+}
+
+function updateLight() {
+  if (!lightOn) {
+    lightBar.style.opacity = '0';
+    document.getElementById('toggle-btn').classList.add('off');
+    return;
+  }
+  document.getElementById('toggle-btn').classList.remove('off');
+  const brightness = brightnessSlider.value / 100;
+  const height = heightSlider.value;
+  lightBar.style.opacity = brightness;
+  lightBar.style.height = height + 'px';
+  lightBar.style.background = lightColor;
+}
+
+brightnessSlider.addEventListener('input', updateLight);
+heightSlider.addEventListener('input', updateLight);
+
+document.getElementById('toggle-btn').addEventListener('click', () => {
+  lightOn = !lightOn;
+  updateLight();
+});
+
+// Switch camera
+document.getElementById('switch-btn').addEventListener('click', () => {
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+  initCamera();
+});
+
+// Color picker
+document.querySelectorAll('.color-dot').forEach(dot => {
+  dot.addEventListener('click', () => {
+    document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+    dot.classList.add('active');
+    lightColor = dot.dataset.color;
+    updateLight();
+  });
+});
+
+// Capture
+document.getElementById('capture-btn').addEventListener('click', () => {
+  flashOverlay.style.opacity = '1';
+  setTimeout(() => { flashOverlay.style.opacity = '0'; }, 150);
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  if (facingMode === 'user') {
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(video, 0, 0);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  previewImg.src = dataUrl;
+  previewOverlay.style.display = 'flex';
+});
+
+document.getElementById('btn-retake').addEventListener('click', () => {
+  previewOverlay.style.display = 'none';
+});
+
+document.getElementById('btn-save').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = previewImg.src;
+  a.download = 'selfie_' + Date.now() + '.jpg';
+  a.click();
+  previewOverlay.style.display = 'none';
+});
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js');
+}
+
+updateLight();
+initCamera();
+</script>
+</body>
+</html>
